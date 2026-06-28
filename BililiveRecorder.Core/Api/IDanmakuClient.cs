@@ -12,6 +12,7 @@ namespace BililiveRecorder.Core.Api
 
         event EventHandler<StatusChangedEventArgs>? StatusChanged;
         event EventHandler<DanmakuReceivedEventArgs>? DanmakuReceived;
+        event EventHandler<RawDanmakuPacketReceivedEventArgs>? RawDanmakuPacketReceived;
 
         Func<string, string?>? BeforeHandshake { get; set; }
 

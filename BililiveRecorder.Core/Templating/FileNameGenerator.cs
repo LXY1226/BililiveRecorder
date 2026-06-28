@@ -75,7 +75,7 @@ namespace BililiveRecorder.Core.Templating
             this.logger = logger?.ForContext<FileNameGenerator>() ?? Logger.None;
         }
 
-        public FileNameTemplateOutput CreateFilePath(FileNameTemplateContext data)
+        public FileNameTemplateOutput CreateFilePath(FileNameTemplateContext data, DateTimeOffset? now = null, bool checkFileExists = true)
         {
             var status = FileNameTemplateStatus.Success;
             string? errorMessage = null;
@@ -85,10 +85,10 @@ namespace BililiveRecorder.Core.Templating
             var workDirectory = this.config.WorkDirectory;
             var skipFullPath = workDirectory is null;
 
-            var now = DateTimeOffset.Now;
+            var templateNow = now ?? DateTimeOffset.Now;
             var templateOptions = new TemplateOptions
             {
-                Now = () => now,
+                Now = () => templateNow,
             };
             templateOptions.MemberAccessStrategy.MemberNameStrategy = MemberNameStrategies.CamelCase;
             templateOptions.ValueConverters.Add(o => o is JContainer j ? new JContainerValue(j) : null);
@@ -132,7 +132,7 @@ namespace BililiveRecorder.Core.Templating
                     fullPath += ".flv";
             }
 
-            if (!skipFullPath && File.Exists(fullPath))
+            if (checkFileExists && !skipFullPath && File.Exists(fullPath))
             {
                 this.logger.Warning("录制文件名冲突，将写入到默认路径。");
                 status = FileNameTemplateStatus.FileConflict;

@@ -38,6 +38,7 @@ namespace BililiveRecorder.Core
         private readonly IDanmakuClient danmakuClient;
         private readonly IApiClient apiClient;
         private readonly IBasicDanmakuWriter basicDanmakuWriter;
+        private readonly IRawDanmakuWriter rawDanmakuWriter;
         private readonly IRecordTaskFactory recordTaskFactory;
         private readonly UserScriptRunner userScriptRunner;
         private readonly CancellationTokenSource cts;
@@ -70,7 +71,7 @@ namespace BililiveRecorder.Core
             coverDownloadHttpClient.DefaultRequestHeaders.UserAgent.Clear();
         }
 
-        public Room(IServiceScope scope, RoomConfig roomConfig, int initDelayFactor, ILogger logger, IDanmakuClient danmakuClient, IApiClient apiClient, IBasicDanmakuWriter basicDanmakuWriter, IRecordTaskFactory recordTaskFactory, UserScriptRunner userScriptRunner)
+        public Room(IServiceScope scope, RoomConfig roomConfig, int initDelayFactor, ILogger logger, IDanmakuClient danmakuClient, IApiClient apiClient, IBasicDanmakuWriter basicDanmakuWriter, IRawDanmakuWriter rawDanmakuWriter, IRecordTaskFactory recordTaskFactory, UserScriptRunner userScriptRunner)
         {
             this.scope = scope ?? throw new ArgumentNullException(nameof(scope));
             this.RoomConfig = roomConfig ?? throw new ArgumentNullException(nameof(roomConfig));
@@ -79,6 +80,7 @@ namespace BililiveRecorder.Core
             this.danmakuClient = danmakuClient ?? throw new ArgumentNullException(nameof(danmakuClient));
             this.apiClient = apiClient ?? throw new ArgumentNullException(nameof(apiClient));
             this.basicDanmakuWriter = basicDanmakuWriter ?? throw new ArgumentNullException(nameof(basicDanmakuWriter));
+            this.rawDanmakuWriter = rawDanmakuWriter ?? throw new ArgumentNullException(nameof(rawDanmakuWriter));
             this.recordTaskFactory = recordTaskFactory ?? throw new ArgumentNullException(nameof(recordTaskFactory));
             this.userScriptRunner = userScriptRunner ?? throw new ArgumentNullException(nameof(userScriptRunner));
 
@@ -93,6 +95,7 @@ namespace BililiveRecorder.Core
 
             this.danmakuClient.StatusChanged += this.DanmakuClient_StatusChanged;
             this.danmakuClient.DanmakuReceived += this.DanmakuClient_DanmakuReceived;
+            this.danmakuClient.RawDanmakuPacketReceived += this.DanmakuClient_RawDanmakuPacketReceived;
             this.danmakuClient.BeforeHandshake = this.DanmakuClient_BeforeHandshake;
 
             _ = Task.Run(async () =>
@@ -655,6 +658,11 @@ namespace BililiveRecorder.Core
             _ = Task.Run(async () => await this.basicDanmakuWriter.WriteAsync(d));
         }
 
+        private void DanmakuClient_RawDanmakuPacketReceived(object? sender, Api.Danmaku.RawDanmakuPacketReceivedEventArgs e)
+        {
+            _ = this.rawDanmakuWriter.WriteAsync(e, this);
+        }
+
         private void DanmakuClient_StatusChanged(object? sender, Api.Danmaku.StatusChangedEventArgs e)
         {
             this.DanmakuConnected = e.Connected;
@@ -745,6 +753,10 @@ namespace BililiveRecorder.Core
                             this.CreateAndStartNewRecordTask(skipFetchRoomInfo: false);
                     }
                     break;
+                case nameof(this.RoomConfig.RecordDanmaku):
+                    if (!this.RoomConfig.RecordDanmaku)
+                        this.rawDanmakuWriter.Disable();
+                    break;
                 default:
                     break;
             }
@@ -784,6 +796,7 @@ namespace BililiveRecorder.Core
                     this.cts.Dispose();
                     this.recordTask?.RequestStop();
                     this.basicDanmakuWriter.Disable();
+                    this.rawDanmakuWriter.Disable();
                     this.scope.Dispose();
                 }
 

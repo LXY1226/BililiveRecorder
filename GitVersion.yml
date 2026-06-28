@@ -7,12 +7,25 @@ branches:
     increment: Patch
     prevent-increment-of-merged-branch-version: false
     track-merge-target: true
-    regex: ^dev(elop)?(ment)?$
+    regex: ^dev(elop)?(ment)?(-\d+(\.\d+)*)?$
     source-branches: []
     tracks-release-branches: true
     is-release-branch: false
     is-mainline: false
     pre-release-weight: 0
+  feature:
+    mode: ContinuousDelivery
+    tag: useBranchName
+    increment: Inherit
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: false
+    regex: ^features?[/-]
+    source-branches:
+    - develop
+    tracks-release-branches: false
+    is-release-branch: false
+    is-mainline: false
+    pre-release-weight: 30000
 ignore:
   sha: []
 merge-message-formats: {}

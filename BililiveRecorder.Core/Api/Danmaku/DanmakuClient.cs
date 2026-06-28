@@ -31,6 +31,7 @@ namespace BililiveRecorder.Core.Api.Danmaku
 
         public event EventHandler<StatusChangedEventArgs>? StatusChanged;
         public event EventHandler<DanmakuReceivedEventArgs>? DanmakuReceived;
+        public event EventHandler<RawDanmakuPacketReceivedEventArgs>? RawDanmakuPacketReceived;
 
         public Func<string, string?>? BeforeHandshake { get; set; } = null;
 
@@ -117,7 +118,7 @@ namespace BililiveRecorder.Core.Api.Danmaku
                 {
                     try
                     {
-                        await ProcessDataAsync(reader, this.ProcessCommand).ConfigureAwait(false);
+                        await ProcessDataAsync(reader, this.ProcessCommand, this.ProcessRawPacket).ConfigureAwait(false);
                     }
                     catch (ObjectDisposedException) { }
                     catch (Exception ex)
@@ -151,6 +152,11 @@ namespace BililiveRecorder.Core.Api.Danmaku
             {
                 this.logger.Warning(ex, "Error running ProcessCommand");
             }
+        }
+
+        private void ProcessRawPacket(RawDanmakuPacketReceivedEventArgs e)
+        {
+            RawDanmakuPacketReceived?.Invoke(this, e);
         }
 
 #pragma warning disable VSTHRD100 // Avoid async void methods
@@ -277,14 +283,14 @@ namespace BililiveRecorder.Core.Api.Danmaku
 
         #region Receive
 
-        private static async Task ProcessDataAsync(PipeReader reader, Action<string> callback)
+        private static async Task ProcessDataAsync(PipeReader reader, Action<string> callback, Action<RawDanmakuPacketReceivedEventArgs>? rawPacketCallback)
         {
             while (true)
             {
                 var result = await reader.ReadAsync();
                 var buffer = result.Buffer;
 
-                while (TryParseCommand(ref buffer, callback)) { }
+                while (TryParseCommand(ref buffer, callback, rawPacketCallback)) { }
 
                 reader.AdvanceTo(buffer.Start, buffer.End);
 
@@ -294,7 +300,7 @@ namespace BililiveRecorder.Core.Api.Danmaku
             await reader.CompleteAsync();
         }
 
-        private static bool TryParseCommand(ref ReadOnlySequence<byte> buffer, Action<string> callback)
+        internal static bool TryParseCommand(ref ReadOnlySequence<byte> buffer, Action<string> callback, Action<RawDanmakuPacketReceivedEventArgs>? rawPacketCallback)
         {
             if (buffer.Length < 4)
                 return false;
@@ -317,6 +323,7 @@ namespace BililiveRecorder.Core.Api.Danmaku
             if (buffer.Length < length)
                 return false;
 
+            var packetSlice = buffer.Slice(buffer.Start, length);
             var headerSlice = buffer.Slice(buffer.Start, 16);
             buffer = buffer.Slice(headerSlice.End);
             var bodySlice = buffer.Slice(buffer.Start, length - 16);
@@ -332,6 +339,13 @@ namespace BililiveRecorder.Core.Api.Danmaku
                 Span<byte> stackBuffer = stackalloc byte[16];
                 headerSlice.CopyTo(stackBuffer);
                 Parse2Protocol(stackBuffer, out header);
+            }
+
+            if (header.Action != 2 && rawPacketCallback is not null)
+            {
+                var packet = new byte[length];
+                packetSlice.CopyTo(packet);
+                rawPacketCallback(new RawDanmakuPacketReceivedEventArgs(DateTimeOffset.Now, header.Action, packet));
             }
 
             if (header.Version == 2 && header.Action == 5)
@@ -365,7 +379,7 @@ namespace BililiveRecorder.Core.Api.Danmaku
 #pragma warning restore VSTHRD002 // Avoid problematic synchronous waits
                 var inner_buffer = result.Buffer;
 
-                while (TryParseCommand(ref inner_buffer, callback)) { }
+                while (TryParseCommand(ref inner_buffer, callback, rawPacketCallback: null)) { }
 
                 reader.AdvanceTo(inner_buffer.Start, inner_buffer.End);
 
